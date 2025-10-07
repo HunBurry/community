@@ -36,10 +36,18 @@ def float_to_string_without_trailing_decimal(f):
     else:
         return str(f)
 
+def round_to_two_decimals(num):
+    shifted_value = num * 100
+    if shifted_value >= 0:
+        rounded_shifted = int(shifted_value + 0.5)
+    else:
+        rounded_shifted = int(shifted_value - 0.5)
+    return rounded_shifted / 100.0
+
 ######################################################################################### Main Function #########################################################################################
 
 def main(config):
-    decrypted_key = secret.decrypt("AV6+xWcEV7GacJDEp2zeLrBSz3B9Zs7vJXr0DjyUa2llQTDRSYQEZjfunRXRXG7cWxeIEda9H1nskXpFtFw1KmcYAf09+wjpCZe+T1p9vFdbYO72NYHc5s0vpjj+MXuqsQDhgkMPOlLpYdkH/Md0/aBnAdmU4lq4qWLx+kTMbnJAmfqido+6g1c=")
+    decrypted_key = secret.decrypt("AV6+xWcEtjzCMWUa+at2mAmFdMvwL4NMNReBrfTUKm4xnoqy2dbFJgOd9DW6NPcXn9YFo8zg6aVpoMgihOjr7E+jGhZ+zA4pFJ6yXff5IcNn/HlyAA22izWW4wCBY8s4rgdHsQEcZmpwuJTI9orRNwRQonai5Gc6Q1ixW75LuRXKJV3DUEkqJfcc")
     headers = {
         "Authorization": decrypted_key,
     }
@@ -51,44 +59,34 @@ def main(config):
     if username == None:  # Eror message prompting user to input a username into the app.
         message = "No username found... Input a username in the app to check your wins here!"
     else:
-        primary_url = "https://fortniteapi.io/v1/lookup?username=" + username
-        accountID_request = http.get(primary_url, headers = headers, ttl_seconds = 86400)
+        api_url = "https://fortnite-api.com/v2/stats/br/v2?name=" + username
+        playerStats_request = http.get(api_url, headers = headers, ttl_seconds = 900)
+        playerStats_request = playerStats_request.json()
 
-        if accountID_request.status_code != 200:  # Can't find the passed in username.
-            message = "Couldn't find your Epic account information... Make sure to use your Epic account username and not your display name!"
-            print("Fortnite player lookup request failed because the username can't be found..")
-        else:  # Username can be found, proceed.
-            accountID = accountID_request.json()["account_id"]
-            secondary_url = "https://fortniteapi.io/v1/stats?account=" + accountID
-            playerStats_request = http.get(secondary_url, headers = headers, ttl_seconds = 1200)
+        if playerStats_request["status"] == 403:  #Something went wrong and we can't get the account associated with the ID.
+            message = "Sorry, your account is private, so we can't view your stats! Make your account public to see stats."
+            print("Fortnite player stats request failed because the user's account is private.")
 
-            if playerStats_request.status_code != 200:  #Something went wrong and we can't get the account associated with the ID.
-                message = "We couldn't find a Fortnite account associated with the given Epic username."
-                print("Fortnite player stats request failed because something went wrong...")
+        elif playerStats_request["status"] == 404:
+            message = "We couldn't find a Fortnite account associated with the given Epic username. Make sure to use your Epic account username and not your display name!"
+            print("Fortnite player stats request failed because something went wrong...")
 
-            if playerStats_request.json().get("code", None) == "PRIVATE_ACCOUNT":
-                message = "Sorry, your account is private, so we can't view your stats! Make your account public to see stats."
-                print("Fortnite player stats request failed because the user's account is private.")
+        else:
+            solo_wins = "Solos: " + float_to_string_without_trailing_decimal(playerStats_request["data"]["stats"]["all"]["solo"]["wins"])
+            duo_wins = "Duos: " + float_to_string_without_trailing_decimal(playerStats_request["data"]["stats"]["all"]["duo"]["wins"])
+            squad_wins = "Squads: " + float_to_string_without_trailing_decimal(playerStats_request["data"]["stats"]["all"]["squad"]["wins"])
 
-            else:
-                playerStats_request = playerStats_request.json()
-                squad_wins = "Squads: " + float_to_string_without_trailing_decimal(playerStats_request["global_stats"]["squad"]["placetop1"])
-                trio_wins = "Trios: " + float_to_string_without_trailing_decimal(playerStats_request["global_stats"]["trio"]["placetop1"])
-                duo_wins = "Duos: " + float_to_string_without_trailing_decimal(playerStats_request["global_stats"]["duo"]["placetop1"])
-                solo_wins = "Solos: " + float_to_string_without_trailing_decimal(playerStats_request["global_stats"]["solo"]["placetop1"])
+            if show_kd:
+                solo_wins = solo_wins + " (K/D: " + str(round_to_two_decimals(playerStats_request["data"]["stats"]["all"]["solo"]["kd"])) + ")"
+                duo_wins = duo_wins + " (K/D: " + str(round_to_two_decimals(playerStats_request["data"]["stats"]["all"]["duo"]["kd"])) + ")"
+                squad_wins = squad_wins + " (K/D: " + str(round_to_two_decimals(playerStats_request["data"]["stats"]["all"]["squad"]["kd"])) + ")"
 
-                if show_kd:
-                    squad_wins = squad_wins + " (K/D: " + str(playerStats_request["global_stats"]["squad"]["kd"]) + ")"
-                    trio_wins = trio_wins + " (K/D: " + str(playerStats_request["global_stats"]["trio"]["kd"]) + ")"
-                    duo_wins = duo_wins + " (K/D: " + str(playerStats_request["global_stats"]["duo"]["kd"]) + ")"
-                    solo_wins = solo_wins + " (K/D: " + str(playerStats_request["global_stats"]["solo"]["kd"]) + ")"
-                if win_rate:
-                    squad_wins = squad_wins + " (W/L: " + str(playerStats_request["global_stats"]["squad"]["winrate"]) + ")"
-                    trio_wins = trio_wins + " (W/L: " + str(playerStats_request["global_stats"]["trio"]["winrate"]) + ")"
-                    duo_wins = duo_wins + " (W/L: " + str(playerStats_request["global_stats"]["duo"]["winrate"]) + ")"
-                    solo_wins = solo_wins + " (W/L: " + str(playerStats_request["global_stats"]["solo"]["winrate"]) + ")"
+            if win_rate:
+                solo_wins = solo_wins + " (W/L: " + str(round_to_two_decimals(playerStats_request["data"]["stats"]["all"]["solo"]["winRate"])) + "%)"
+                duo_wins = duo_wins + " (W/L: " + str(round_to_two_decimals(playerStats_request["data"]["stats"]["all"]["duo"]["winRate"])) + "%)"
+                squad_wins = squad_wins + " (W/L: " + str(round_to_two_decimals(playerStats_request["data"]["stats"]["all"]["squad"]["winRate"])) + "%)"
 
-                message = solo_wins + "    " + duo_wins + "    " + trio_wins + "    " + squad_wins
+            message = solo_wins + "    " + duo_wins + "    " + squad_wins
 
     return render.Root(
         show_full_animation = True,
